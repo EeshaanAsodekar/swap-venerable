@@ -17,6 +17,21 @@ def discount_factors(sofr_series:pd.DataFrame):
 def get_pv(dicount_factor, cashflow):
     return dicount_factor*cashflow
 
+def bond_pricer(sofr_series: pd.DataFrame, cashflow_dates: list, coupon: float):
+    def get_closest_discount_factor(date):
+        date = pd.Timestamp(date)  # Convert date to pd.Timestamp
+        closest_date = sofr_series.iloc[(sofr_series['settlement_date'] - date).abs().argsort()[:1]]
+        return closest_date['discount_factor'].values[0]
+
+    bond_price = 0
+    for i, date in enumerate(cashflow_dates):
+        discount_factor = get_closest_discount_factor(date)
+        if i == len(cashflow_dates) - 1:
+            bond_price += get_pv(discount_factor, coupon + 100)  # Add 100 to the last payment
+        else:
+            bond_price += get_pv(discount_factor, coupon)
+
+    return bond_price
 def price_bonds(series:pd.DataFrame, bonds:pd.DataFrame):
     print(series.head())
     print(bonds.head())
@@ -29,13 +44,15 @@ def price_bonds(series:pd.DataFrame, bonds:pd.DataFrame):
         axis=1
     )
 
-    # print(bonds.head())
+    print(bonds.head())
+    bonds['bond_price'] = bonds.apply(
+        lambda row: bond_pricer(sofr_series, row['cashflow_dates'], row['coupon']),
+        axis=1
+    )
 
-    # for i in range(1, len(bonds)):
-    #     start = bonds.loc[i,'start']
-    #     end = bonds.loc[i,'maturity']
-    #     dates = [start.date() + datetime.timedelta(days= 180) for x in range(end.year - start.year)]
-    #     print(dates)
+    print(bonds[['start', 'maturity', 'coupon', 'bond_price']])
+
+    return bonds
 
 if __name__ == "__main__":
 
@@ -47,7 +64,9 @@ if __name__ == "__main__":
 
     bonds = pd.read_csv("bond.csv")
 
-    price_bonds(series, bonds)
+    priced = price_bonds(series, bonds)
+
+    priced.to_csv("bonds_priced.csv")
 
     # print(sofr_series.head())
     # print(sofr_series['sofr_rate'])
